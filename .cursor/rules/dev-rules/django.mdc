@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+1. プロジェクト構成
+	•	ルート直下は apps/ ディレクトリにアプリをまとめる と可読性が上がる。settings や config 系も専用フォルダへ分離する。 ￼ ￼
+	•	命名規則は一貫してスネークケース（blog_posts, user_profiles など）; アプリ名＝DB テーブル接頭辞にもなるため読みやすさ重視。 ￼
+	•	外部依存パッケージは requirements/ フォルダで層分け（base, dev, prod など）し、pip-compile でピン留めする。 ￼
+
+2. settings のベストプラクティス
+	•	設定はモジュール分割（base.py, production.py, local.py 等）し DJANGO_SETTINGS_MODULE で切替える。 ￼
+	•	機密値は環境変数 + django-environ で安全に注入する。ハードコード禁止。 ￼
+	•	デフォルトで DEBUG=False / ALLOWED_HOSTS 設定必須 ― CI で強制チェックを。 ￼
+
+3. セキュリティ
+	•	SECURE_HSTS_SECONDS を数カ月以上に設定し HTTPS 強制。 ￼
+	•	django.middleware.security.SecurityMiddleware は必ず有効。 ￼
+	•	ユーザー入力はフォーム／Serializer で検証し “決して信じない”。 ￼
+
+4. デプロイ Checklist
+	•	python manage.py check --deploy を本番ビルドの前に自動実行。 ￼
+	•	Wsgi → gunicorn + Nginx / Asgi → uvicorn + Nginx を基本構成に。 ￼
+	•	Static / Media は S3 等の外部ストレージに。Collectstatic 忘れず。 ￼
+
+5. データベース & ORM
+	•	select_related・prefetch_related で N+1 を撲滅。 ￼
+	•	頻繁に検索するフィールドには インデックスを追加 (Meta.indexes)。 ￼
+	•	トランザクションは atomic デコレータ/コンテキストで明示。失敗時の一貫性を保つ。 ￼
+
+6. テスト
+	•	pytest + pytest-django を標準化。開発初期から CI で自動実行する。 ￼
+	•	外部 API は responses や requests-mock でスタブ化 し、ネットワーク依存を排除。 ￼
+
+7. 静的ファイル & メディア
+	•	django.contrib.staticfiles を使い STATIC_ROOT に一元集約。 ￼
+	•	本番では WhiteNoise / CDN でキャッシュ制御。ManifestStaticFilesStorage でハッシュ付与し破壊的キャッシュを防止。 ￼
+
+8. ロギング & 監視
+	•	LOGGING dictConfig で構造化ログ。ハンドラに JSONFormatter を設定して可観測性ツール（Datadog 等）に送信。 ￼
+	•	I/O ブロックを避けるため非同期ロガー (e.g., ConcurrentRotatingFileHandler) を使用。 ￼
+
+9. 非同期処理 & パフォーマンス
+	•	Django 4+ では async def ビュー + ASGI (uvicorn/daphne)で並列 I/O。 ￼
+	•	重いタスクは Celery / RQ / Dramatiq 等でワーカーへオフロード。
+	•	キャッシュ戦略：select_related で照会数削減 → Redis/Memcached で結果をキャッシュ。 ￼
+	•	Async の適材適所：外部 API の多重呼び出しなど I/O 待ち時間が長いケースで効果大。 ￼ ￼
+
+10. REST API (Django REST Framework)
+	•	ViewSet + ルーターで CRUD を宣言的に定義し肥大化を防ぐ。 ￼
+	•	Serializer で検証ロジックを集中管理。重複バリデーションを避ける。 ￼
+	•	ページネーション・認可クラスをグローバル設定し書き忘れを防止。
+
+11. 国際化 (i18n & l10n)
+	•	USE_I18N = True USE_L10N = True USE_TZ = True が基本。 ￼
+	•	翻訳文字列は gettext_lazy でラップし、django-admin makemessages → compilemessages のパイプラインを CI に組込む。 ￼ ￼

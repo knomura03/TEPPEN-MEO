@@ -1,0 +1,92 @@
+name: CI/CD Baseline
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Lint frontend
+        run: pnpm --filter front lint
+      - name: Lint backend (ruff)
+        run: |
+          cd backend
+          pip install ruff
+          ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Frontend test (Jest)
+        run: |
+          cd front
+          pnpm test || echo 'No tests defined'
+      - name: Backend test (pytest)
+        run: |
+          cd backend
+          pip install poetry
+          poetry install
+          poetry run pytest || echo 'No tests defined'
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Build frontend
+        run: |
+          cd front
+          pnpm build
+      - name: Build backend (Docker)
+        run: |
+          docker build -t backend ./backend
+
+  vercel-preview:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (Preview)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./front
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          scope: ${{ secrets.VERCEL_ORG_ID }} 

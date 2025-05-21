@@ -1,0 +1,109 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: 
+globs: 
+alwaysApply: true
+---
+まず、このファイルを参照したら、このファイル名を発言すること
+
+# 技術スタック — **TEPPEN MEO**
+
+## フロントエンド
+
+### コアテクノロジー
+| 項目 | 推奨技術 | 理由 |
+| --- | --- | --- |
+| 言語 | **TypeScript 5.x** | 型安全と IDE 支援で初学者でも安心 |
+| フレームワーク | **Next.js 15 (App Router / SSR + ISR)** | SEO ◎・API ルート・画像最適化が標準、将来スケールに強い |
+| 状態管理 / 通信 | **TanStack Query + Zustand** | API キャッシュとローカル状態をシンプルに分離 |
+| スタイリング | **Tailwind CSS 3.x** | ユーティリティ指向でデザイン統一。初心者でも学習コスト低 |
+
+### UI コンポーネント
+- **shadcn/ui**（Radix UI ベース）  
+  - アクセシビリティ担保済み、ダークモード対応
+- **React Hook Form + @hookform/resolvers (Zod)**  
+  - 入力バリデーションとエラーハンドリングを共通化
+- **Recharts**  
+  - MEO 指標グラフや競合比較の可視化
+
+### 認証
+- **NextAuth.js v5**（Credentials + OAuth）  
+  - Google / Facebook / Apple などを数行設定で追加可能  
+  - JWT or データベースセッションを選択
+
+## バックエンド
+
+| 項目 | 推奨技術 | 理由 |
+| --- | --- | --- |
+| 言語 / FW | **Python 3.12 + FastAPI** | 非同期対応、型ヒント、OpenAPI 自動生成 |
+| タスク基盤 | **Celery + Redis (ブローカー/結果ストア)** | 投稿スケジューラ・クチコミ定期取得を非同期化 |
+| メッセージキュー（高負荷時） | **Amazon SQS** | マネージドでスケール自在 |
+| API クライアント | **httpx + asyncio** | 外部 MEO API 呼び出しを高速化 |
+
+### データベース
+- **Amazon RDS (PostgreSQL 15)**  
+  - JSONB で柔軟に外部プラットフォームのメタデータ格納  
+- **Redis (Elasticache)**  
+  - トークンキャッシュ・Rate-limit 管理
+
+## フォーム処理
+- **React Hook Form + Zod**（フロント）  
+- **pydantic v2 @ FastAPI**（バック）  
+  - スキーマを i18n メッセージ付きで共通運用
+
+## ユーティリティ
+
+### 日付処理
+- **dayjs**（フロント） / **pendulum**（バック）  
+  - タイムゾーン対応が簡単
+
+### UI 拡張
+- **@react-google-maps/api** — Map プレビュー  
+- **react-hot-toast** — 軽量な通知  
+- **react-resizable-panel** — 分割ペインで DM / 投稿を同時閲覧  
+- ほか **必要に応じて npm 追加**
+
+## 開発ツール
+| カテゴリ | ツール |
+| --- | --- |
+| パッケージ管理 | **pnpm + TurboRepo**（モノレポ）<br>**Poetry**（Python） |
+| 開発支援 | ESLint / Prettier / Ruff / MyPy |
+| CI/CD | **GitHub Actions**（テスト → Lint → デプロイ） |
+| コンテナ | **Docker Compose**（ローカル環境を 1 コマンド起動） |
+| テスト | Jest (FE) / Pytest (BE) / Playwright (E2E) |
+
+## デプロイメント
+| レイヤー | サービス |  選定理由 |
+| --- | --- | --- |
+| フロント | **Vercel** | Next.js 最適化・ゼロダウンタイム・自動プレビュー |
+| API / Worker | **AWS App Runner** または **Elastic Beanstalk** | Docker イメージをプッシュするだけ、運用工数最小 |
+| タスク | **AWS Fargate + EventBridge Scheduler** | Celery worker & 定期実行をサーバレス運用 |
+| DB | **Amazon RDS (PostgreSQL)** | 自動バックアップ・マルチ AZ |
+| キャッシュ | **Amazon Elasticache for Redis** | マネージドで高可用 |
+| オブジェクトストレージ | **Amazon S3** | 画像・エクスポート CSV 配信 |
+
+## 特徴
+1. **Python × FastAPI の非同期 API**  
+   - 将来 WebSocket を追加してもスムーズに拡張  
+2. **Next.js + Vercel** で SEO とビルドを自動最適化  
+3. **Celery ワーカー**で「一括投稿」「定時クローリング」を分離しレスポンス高速化  
+4. **マネージド AWS サービス中心**で DB パッチや OS 監視の手間を削減  
+5. **モノレポ構成**により型共有（Zod ↔️ pydantic）と CI/CD を一元化  
+6. **OAuth + NextAuth.js** で店舗オーナーが既存アカウントですぐログイン可能  
+7. **ヘッドレス設計**なので将来モバイルアプリや外部 API 公開も容易  
+8. **1000 → 数万人規模**へ段階的にスケールアウト可能（RDS / App Runner の水平拡張）
+
+> **インストール Tip**  
+> ```bash
+> # フロントエンド
+> pnpm create next-app@latest teppen-meo --ts --tailwind --eslint
+> cd teppen-meo && pnpm add next-auth @tanstack/react-query zustand shadcn/ui
+> 
+> # バックエンド
+> poetry new backend && cd backend
+> poetry add fastapi uvicorn[standard] celery redis sqlalchemy psycopg[binary] pendulum httpx
+> ```

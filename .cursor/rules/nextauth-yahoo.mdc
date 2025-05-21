@@ -1,0 +1,186 @@
+---
+description: Yahooの認証周りを着手する際に使用する
+globs: 
+alwaysApply: false
+---
+⸻
+
+概要
+
+NextAuth.js は Next.js 用のゼロ依存・フルスタック認証ライブラリで、OAuth 1.0/2.0・OpenID Connect（OIDC）・メールリンク・独自クレデンシャルの4⽅式をサポートします。ビルトイン Provider が多数用意されていますが、**任意サービスを「カスタム Provider」**として追加できる仕組みがあり、組み込みに無い Yahoo! ID も少量の設定で SSO 可能です。 ￼ ￼
+
+⸻
+
+インストール
+
+npm i next-auth            # v4 系
+# v5 の場合（Auth.js ブランド移行後）
+npm i next-auth@beta       # or 5.x.x
+
+備考: v5 はパッケージ名はそのままですがドキュメントは authjs.dev に移動しました。主な破壊的変更は checks オプションの必須化など。 ￼
+
+⸻
+
+主要ディレクトリ / ファイル
+
+パス	役割
+pages/api/auth/[...nextauth].ts	唯一のエントリ。NextAuth(options) を呼び出す
+.env.local	NEXTAUTH_SECRET, NEXTAUTH_URL, 各 Provider の CLIENT_ID/SECRET
+lib/auth.ts (任意)	getServerSession, authOptions 共通化用
+
+
+⸻
+
+オプション構成
+
+import NextAuth, { type NextAuthOptions } from "next-auth"
+
+export const authOptions: NextAuthOptions = {
+  providers: [/* … */],
+  session:  { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
+  pages:    { signIn: "/login", error: "/login?error=true" },
+  callbacks:{
+    async jwt({ token, account }) { /* refresh token 等 */; return token },
+    async session({ session, token }) { session.id = token.sub; return session }
+  },
+  events:   { signIn: ({ user }) => console.log("login:", user.email) },
+  theme:    { colorScheme: "auto" }
+}
+
+export default NextAuth(authOptions)
+
+	•	session.strategy: "jwt" (stateless) / "database" の 2 方式。 ￼
+	•	callbacks: 認可フックでトークン拡張や RBAC が可能。 ￼
+	•	events: 監査ログやメール通知に便利。 ￼
+
+⸻
+
+ビルトイン Provider 一覧（抜粋）
+
+種別	代表例
+OAuth 2.0	Google / Facebook / GitHub / Twitter (v2) / Auth0
+OAuth 1.0a	Twitter (旧) / Tumblr
+Email	任意 SMTP（magic-link）
+Credentials	独自 DB / LDAP 連携など
+
+注: Yahoo は組み込みに含まれていません。カスタム Provider を定義して追加します。 ￼
+
+⸻
+
+カスタム OAuth プロバイダーの作り方
+	1.	必須フィールド
+id, name, type:"oauth", authorization, token, userinfo, clientId, clientSecret。 ￼
+	2.	OpenID Connect なら wellKnown URLを指定すると authorization/token/userinfo を省略可。 ￼
+	3.	checks で "pkce" / "state" / "nonce" を組み合わせて CSRF 保護。v5 では 1 つ以上必須。 ￼
+	4.	profile() でプロバイダー固有レスポンスを NextAuth が期待する { id,name,email,image } 形式に変換。 ￼
+
+⸻
+
+Yahoo ID を追加する手順
+
+1. Yahoo Developer でアプリ登録
+
+ステップ	内容
+①	Yahoo Developer Console で Web Application を作成
+②	Client ID / Client Secret を取得
+③	Callback URL に https://<domain>/api/auth/callback/yahoo を登録
+④	Scope は openid profile email を付与
+
+	•	Authorization Endpoint: https://api.login.yahoo.com/oauth2/request_auth  ￼
+	•	Token Endpoint: https://api.login.yahoo.com/oauth2/get_token  ￼
+	•	UserInfo Endpoint: https://api.login.yahoo.com/openid/v1/userinfo
+
+2. YahooProvider() を実装
+
+import { OAuthConfig, Profile } from "next-auth/providers"
+
+const YahooProvider = <P extends Profile>(): OAuthConfig<P> => ({
+  id:   "yahoo",
+  name: "Yahoo",
+  type: "oauth",
+  authorization: {
+    url: "https://api.login.yahoo.com/oauth2/request_auth",
+    params: { scope: "openid profile email" }
+  },
+  token:    "https://api.login.yahoo.com/oauth2/get_token",
+  userinfo: "https://api.login.yahoo.com/openid/v1/userinfo",
+  clientId:     process.env.YAHOO_CLIENT_ID!,
+  clientSecret: process.env.YAHOO_CLIENT_SECRET!,
+  checks: ["pkce", "state"],
+  profile(profile) {
+    return {
+      id:    profile.sub,
+      name:  profile.name,
+      email: profile.email,
+      image: profile.picture
+    }
+  }
+})
+
+	•	Yahoo は PKCE 対応。checks に "pkce" を必ず追加。 ￼
+	•	レスポンスは OIDC 準拠のため profile.sub / name / email / picture が取得できる。
+
+3. NextAuth に登録
+
+export const authOptions: NextAuthOptions = {
+  providers: [
+    YahooProvider(),
+    /* GoogleProvider(), CredentialsProvider({...}) など */
+  ],
+  /* callbacks / session ほか共通設定 */
+}
+
+4. 動作確認
+	1.	/api/auth/signin に Yahoo ボタンが表示される。
+	2.	認可後 await getServerSession() が provider:"yahoo" を含む session オブジェクトを返せば成功。
+	3.	期限切れ時は jwt callback で refresh_token を使って更新可能。Yahoo の refresh_token は 1 年有効。 ￼
+
+トラブルシューティング:
+	•	エラー id_token has wrong issuer は profile() で sub を正しく返していない場合に発生。 ￼
+	•	旧 Yahoo OpenID 2.0 (廃止) URL を誤設定すると 404。最新版 OAuth2 エンドポイントを必ず使用。 ￼
+
+⸻
+
+主要オプション早見表
+
+カテゴリ	キー	要点
+session	strategy, maxAge, updateAge	JWT か DB セッションを選択
+pages	signIn, error, verifyRequest, newUser	UI をフルカスタマイズ可能
+callbacks	jwt, session, signIn, redirect, authorized	認可ロジックとトークン拡張の中心
+events	signIn, signOut, createUser, linkAccount, error	監査・ロギング
+adapter	Prisma, Fauna, TypeORM など	User/Account/Session を RDB や DynamoDB に保存
+theme	brandColor, logo, colorScheme	標準サインイン画面の外観
+
+詳細は公式 configuration/options ページ参照。 ￼
+
+⸻
+
+v5（Auth.js）での変更点
+	•	checks オプション必須化 ― state または pkce を明示する必要あり。 ￼
+	•	ルート移動 ― ドキュメントは https://authjs.dev に統合。 ￼
+	•	CSRF Cookie 名の変更 など細かな Breaking Changes は移行ガイドを参照。 ￼
+
+⸻
+
+ベストプラクティス
+	1.	NEXTAUTH_SECRET を必ず 32byte 以上の Base64 乱数に。JWT 署名鍵としても利用。
+	2.	HTTPS 強制 + SameSite=Lax Cookie で Cookie 漏洩対策。
+	3.	Adapter を使い DB セッションにすると多端末サインアウトが簡単。
+	4.	Refresh Token Rotation を実装し、外部 Provider のトークン期限切れに備える。
+	5.	Webhook or Event で監査ログ を CloudWatch / Datadog に送信。
+
+⸻
+
+参考リンク
+	•	NextAuth.js Provider Docs ￼
+	•	Custom Provider Guide ￼
+	•	Built-in Provider List ￼
+	•	Yahoo OAuth 2.0 Flow Guide ￼ ￼
+	•	OpenID UserInfo Endpoint (Yahoo)
+	•	v5 Migration Guide ￼
+	•	NextAuth.js Options Reference ￼
+	•	Example App / Getting Started ￼
+	•	Community Discussion ― Yahoo Provider 実装例 ￼
+	•	Dev.to: Create a Custom OAuth Provider ￼
+
+これで Yahoo 認証を含む NextAuth.js 全体像を把握しつつ、実装手順まで一望できます。
